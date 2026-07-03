@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Railway Booking Dashboard</title>
+    <link rel="stylesheet" href="css/style.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="site-header">
+        <div class="brand">
+          <img src="images/railway-logo.svg" alt="Railway Logo" class="brand-logo" />
+          <div>
+            <p class="eyebrow">Indian Railway System</p>
+            <h1>National Express Network</h1>
+          </div>
+        </div>
+        <p class="hero-copy">Browse live train schedules, book passengers, and monitor bookings in real time with a modern railway dashboard.</p>
+      </header>
+
+      <main class="container-grid">
+        <section class="card overview-card">
+          <div class="overview-row">
+            <div>
+              <h2>Available Trains</h2>
+              <p>Choose your route and see the next departures from major stations.</p>
+            </div>
+            <div class="stat-box">
+              <strong id="trainCount">0</strong>
+              <span>Active trains</span>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table class="train-table">
+              <thead>
+                <tr>
+                  <th>Train No</th>
+                  <th>Train Name</th>
+                  <th>Route</th>
+                  <th>Departure</th>
+                  <th>Arrival</th>
+                  <th>Seats</th>
+                </tr>
+              </thead>
+              <tbody id="trainsTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card card-col">
+          <h2>Passenger Booking</h2>
+          <form id="registrationForm" class="booking-form">
+            <label>
+              Full Name
+              <input type="text" id="name" required placeholder="Enter passenger name" />
+            </label>
+            <label>
+              Email Address
+              <input type="email" id="email" required placeholder="name@example.com" />
+            </label>
+            <label>
+              Contact Number
+              <input type="tel" id="phone" required placeholder="98765 43210" />
+            </label>
+            <button type="submit">Book Ticket</button>
+            <div id="formMessage" class="message"></div>
+          </form>
+        </section>
+
+        <section class="card list-card">
+          <div class="list-header">
+            <h2>Live Passenger Register</h2>
+            <span id="liveIndicator" class="live-pill">Live</span>
+          </div>
+          <div id="statusMessage" class="message">Loading registered passengers...</div>
+          <ul id="usersList"></ul>
+        </section>
+      </main>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="js/app.js"></script>
+  </body>
+</html>
