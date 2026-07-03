@@ -1,31 +1,81 @@
 const express = require('express');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const http = require('http');
 const { Server } = require('socket.io');
+const sqlite3 = require('sqlite3').verbose();
+const { promisify } = require('util');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
-const dataDir = path.join(__dirname, 'data');
-const usersFile = path.join(dataDir, 'users.csv');
 
-app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+const defaultDataDir = path.join(__dirname, 'data');
+const fallbackDataDir = path.join(os.tmpdir(), 'railway-app-data');
+let storageDir = defaultDataDir;
+let dbPath = path.join(storageDir, 'railway.db');
+let db;
+let dbAll;
+let dbRun;
 
-function ensureStorage() {
+function resolveStorage() {
   try {
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
-    }
-    if (!fs.existsSync(usersFile)) {
-      fs.writeFileSync(usersFile, 'name,email,phone\n', 'utf8');
-    }
+    fs.mkdirSync(defaultDataDir, { recursive: true });
+    fs.accessSync(defaultDataDir, fs.constants.W_OK);
+    storageDir = defaultDataDir;
   } catch (err) {
-    console.error('Storage initialization failed:', err);
+    console.warn('Default storage path not writable, falling back to temporary storage:', err.message);
+    storageDir = fallbackDataDir;
+  }
+
+  try {
+    fs.mkdirSync(storageDir, { recursive: true });
+  } catch (err) {
+    console.error('Unable to create storage directory:', err);
+    throw err;
+  }
+
+  dbPath = path.join(storageDir, 'railway.db');
+}
+
+function initializeDatabase() {
+  resolveStorage();
+
+  try {
+    db = new sqlite3.Database(dbPath, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
+      if (err) {
+        console.error('Unable to open database:', err);
+        throw err;
+      }
+    });
+
+    dbAll = promisify(db.all).bind(db);
+    dbRun = promisify(db.run).bind(db);
+
+    db.run(
+      `CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        email TEXT NOT NULL,
+        phone TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )`,
+      (err) => {
+        if (err) {
+          console.error('Unable to create users table:', err);
+          throw err;
+        }
+      }
+    );
+  } catch (err) {
+    console.error('Unable to initialize database:', err);
     throw err;
   }
 }
+
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
 
 const trains = [
   {
@@ -74,32 +124,31 @@ const trains = [
   },
 ];
 
-function loadUsers() {
-  ensureStorage();
-  const raw = fs.readFileSync(usersFile, 'utf8').trim();
-  const lines = raw.split('\n').filter(Boolean);
-  if (lines.length <= 1) return [];
-
-  const [header, ...rows] = lines;
-  return rows.map((row) => {
-    const [name, email, phone] = row.split(',').map((value) => value.trim());
-    return { name, email, phone };
-  });
+async function loadUsers() {
+  try {
+    return await dbAll('SELECT name, email, phone, created_at FROM users ORDER BY id DESC');
+  } catch (err) {
+    console.error('Unable to load users from database:', err);
+    return [];
+  }
 }
 
-function appendUser(user) {
-  ensureStorage();
-  const line = `${user.name},${user.email},${user.phone}\n`;
+async function appendUser(user) {
   try {
-    fs.appendFileSync(usersFile, line, 'utf8');
+    await dbRun('INSERT INTO users (name, email, phone, created_at) VALUES (?, ?, ?, ?)', [
+      user.name,
+      user.email,
+      user.phone,
+      new Date().toISOString(),
+    ]);
   } catch (err) {
-    console.error('Failed to append user:', err);
+    console.error('Failed to insert user into database:', err);
     throw err;
   }
 }
 
-app.get('/api/users', (req, res) => {
-  const users = loadUsers();
+app.get('/api/users', async (req, res) => {
+  const users = await loadUsers();
   res.json(users);
 });
 
@@ -107,7 +156,7 @@ app.get('/api/trains', (req, res) => {
   res.json(trains);
 });
 
-app.post('/api/users', (req, res) => {
+app.post('/api/users', async (req, res) => {
   const { name, email, phone } = req.body;
 
   if (!name || !email || !phone) {
@@ -121,7 +170,7 @@ app.post('/api/users', (req, res) => {
   };
 
   try {
-    appendUser(user);
+    await appendUser(user);
     io.emit('userAdded', user);
     res.status(201).json(user);
   } catch (err) {
@@ -138,6 +187,8 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  ensureStorage();
+  initializeDatabase();
   console.log(`Railway app running on http://localhost:${PORT}`);
+  console.log(`Using storage directory: ${storageDir}`);
+  console.log(`Database file: ${dbPath}`);
 });
