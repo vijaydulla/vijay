@@ -14,11 +14,16 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 function ensureStorage() {
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir);
-  }
-  if (!fs.existsSync(usersFile)) {
-    fs.writeFileSync(usersFile, 'name,email,phone\n', 'utf8');
+  try {
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    if (!fs.existsSync(usersFile)) {
+      fs.writeFileSync(usersFile, 'name,email,phone\n', 'utf8');
+    }
+  } catch (err) {
+    console.error('Storage initialization failed:', err);
+    throw err;
   }
 }
 
@@ -85,7 +90,12 @@ function loadUsers() {
 function appendUser(user) {
   ensureStorage();
   const line = `${user.name},${user.email},${user.phone}\n`;
-  fs.appendFileSync(usersFile, line, 'utf8');
+  try {
+    fs.appendFileSync(usersFile, line, 'utf8');
+  } catch (err) {
+    console.error('Failed to append user:', err);
+    throw err;
+  }
 }
 
 app.get('/api/users', (req, res) => {
@@ -110,10 +120,13 @@ app.post('/api/users', (req, res) => {
     phone: String(phone).trim(),
   };
 
-  appendUser(user);
-  io.emit('userAdded', user);
-
-  res.status(201).json(user);
+  try {
+    appendUser(user);
+    io.emit('userAdded', user);
+    res.status(201).json(user);
+  } catch (err) {
+    res.status(500).json({ error: 'Unable to save booking. Please try again later.' });
+  }
 });
 
 io.on('connection', (socket) => {
